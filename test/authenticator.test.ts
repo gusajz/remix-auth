@@ -91,25 +91,91 @@ describe(Authenticator, () => {
     }
   });
 
-  test("should redirect after logout", async () => {
-    let user = { id: "123" };
-    let session = await sessionStorage.getSession();
-    session.set("user", user);
-    session.set("strategy", "test");
+  describe("logout", () => {
+    test("should throw if the strategy was not found", async () => {
+      let request = new Request("/");
+      let authenticator = new Authenticator(sessionStorage);
 
-    let request = new Request("/", {
-      headers: { Cookie: await sessionStorage.commitSession(session) },
+      expect(() =>
+        authenticator.logout(request, { redirectTo: "/login" })
+      ).rejects.toEqual(new Error("Strategy not found."));
     });
 
-    expect(
-      new Authenticator(sessionStorage, {
+    test("should redirect after logout by default", async () => {
+      let user = { id: "123" };
+      let session = await sessionStorage.getSession();
+      session.set("user", user);
+      session.set("strategy-name", "test-strategy");
+
+      let request = new Request("/", {
+        headers: { Cookie: await sessionStorage.commitSession(session) },
+      });
+
+      let authenticator = new Authenticator(sessionStorage, {
         sessionKey: "user",
-      }).logout(request, { redirectTo: "/login" })
-    ).rejects.toEqual(
-      redirect("/login", {
-        headers: { "Set-Cookie": await sessionStorage.destroySession(session) },
-      })
-    );
+        sessionStrategyKey: "strategy-name",
+      });
+
+      authenticator.use(new MockStrategy(async () => "user"), "test-strategy");
+
+      expect(
+        authenticator.logout(request, { redirectTo: "/login" })
+      ).rejects.toEqual(
+        redirect("/login", {
+          headers: {
+            "Set-Cookie": await sessionStorage.destroySession(session),
+          },
+        })
+      );
+    });
+
+    test("should redirect according to strategy", async () => {
+      class RedirectingMockStrategy<User> extends MockStrategy<User> {
+        async logout(
+          request: Request,
+          sessionStorage: SessionStorage,
+          options: { redirectTo: string }
+        ) {
+          throw redirect(
+            `thrid_party_redirect?returnTo=${options.redirectTo}`,
+            {
+              headers: {
+                "Set-Cookie": await sessionStorage.destroySession(session),
+              },
+            }
+          );
+        }
+      }
+
+      let user = { id: "123" };
+      let session = await sessionStorage.getSession();
+      session.set("user", user);
+      session.set("strategy-name", "test-strategy");
+
+      let request = new Request("/", {
+        headers: { Cookie: await sessionStorage.commitSession(session) },
+      });
+
+      let authenticator = new Authenticator(sessionStorage, {
+        sessionKey: "user",
+        sessionStrategyKey: "strategy-name",
+      });
+
+      authenticator.use(
+        new RedirectingMockStrategy(async () => "user"),
+        "test-strategy"
+      );
+
+      expect(
+        authenticator.logout(request, { redirectTo: "/login" })
+      ).rejects.toEqual(
+        redirect("thrid_party_redirect?returnTo=/login", {
+          headers: {
+            "Set-Cookie": await sessionStorage.destroySession(session),
+          },
+        })
+      );
+    });
   });
 
   describe("isAuthenticated", () => {

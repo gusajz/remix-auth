@@ -99,6 +99,23 @@ export abstract class Strategy<User, VerifyOptions> {
     options: AuthenticateOptions
   ): Promise<User>;
 
+  // TODO: document me.
+  public async logout(
+    request: Request,
+    sessionStorage: SessionStorage,
+    options: { redirectTo: string }
+  ): Promise<void> {
+    let session = await sessionStorage.getSession(
+      request.headers.get("Cookie")
+    );
+
+    throw redirect(options.redirectTo, {
+      headers: {
+        "Set-Cookie": await sessionStorage.destroySession(session),
+      },
+    });
+  }
+
   /**
    * Throw an AuthorizationError or a redirect to the failureRedirect.
    * @param message The error message to set in the session.

@@ -203,10 +203,18 @@ export class Authenticator<User = unknown> {
       request.headers.get("Cookie")
     );
 
-    throw redirect(options.redirectTo, {
-      headers: {
-        "Set-Cookie": await this.sessionStorage.destroySession(session),
-      },
-    });
+    let strategyName: string | null =
+      session.get(this.sessionStrategyKey) ?? null;
+
+    if (strategyName) {
+      let strategy: Strategy<User, never> | null =
+        this.strategies.get(strategyName) ?? null;
+
+      if (strategy) {
+        return strategy.logout(request, this.sessionStorage, options);
+      }
+    }
+
+    throw new Error(`Strategy not found.`);
   }
 }
